@@ -6,17 +6,20 @@
   <meta name="theme-color" content="#092c63">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
+  <meta name="color-scheme" content="light">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SYDONIA Control">
   <title>SYDONIA Control — Pilote licences</title>
-  <link rel="icon" href="./assets/icon-192.png">
-  <link rel="apple-touch-icon" href="./assets/icon-192.png">
+  <link rel="icon" href="./assets/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="./assets/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=20261021-m1">
+  <link rel="stylesheet" href="./styles.css?v=20261115-1">
 </head>
 <body>
   <header class="bar">
-    <div class="brand"><span class="brand-mark" aria-hidden="true">S</span><div><b>SYDONIA Control</b><small>Pilotage des licences Sydonia</small></div></div>
+    <div class="brand"><img src="./assets/logo-64.png" srcset="./assets/logo-64.png 1x, ./assets/logo-128.png 2x" width="38" height="38" alt="" decoding="async"><div><b>SYDONIA Control</b><small>Pilotage des licences Sydonia</small></div></div>
     <span class="dot" id="dot" title="État de la connexion"></span>
     <button id="install" class="ibtn gold" type="button" aria-label="Installer l'application"><svg viewBox="0 0 24 24" class="ic"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 18v2h14v-2"/></svg><span>Installer</span></button>
     <button id="refresh" class="ibtn" type="button" aria-label="Actualiser"><svg viewBox="0 0 24 24" class="ic"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></svg><span>Actualiser</span></button>
@@ -57,8 +60,9 @@
     <form id="configForm">
       <div class="dialog-head"><div><h2>Connexion au pilote</h2><p>Accès développeur</p></div><button type="button" class="close" data-close aria-label="Fermer">×</button></div>
       <label>URL Apps Script pilote<input id="apiUrl" type="url" required placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off"></label>
+      <label>Jeton administrateur<input id="adminToken" type="password" required placeholder="Jeton configuré dans Apps Script" autocomplete="off"></label>
       <label>Contact du service client (facultatif)<input id="supportPhone" type="tel" inputmode="tel" placeholder="+243…" autocomplete="tel"></label>
-      <p class="help">L'URL du pilote Sydonia reste enregistrée uniquement dans ce navigateur.</p>
+      <p class="help">Le jeton administrateur reste uniquement dans la session de ce navigateur et n'est jamais inclus dans le code public.</p>
       <div class="dialog-foot"><button type="button" class="btn sec" data-close>Annuler</button><button class="btn">Enregistrer et tester</button></div>
     </form>
   </dialog>
@@ -79,8 +83,9 @@
     </form>
   </dialog>
 
-  <script src="./config.js"></script>
-  <script src="./app.js?v=20261021-m1"></script>
+  <noscript><p style="padding:16px;font:16px system-ui">JavaScript est nécessaire pour utiliser SYDONIA Control.</p></noscript>
+  <script src="./config.js?v=20261115-1"></script>
+  <script src="./app.js?v=20261115-1"></script>
 </body>
 </html>
 

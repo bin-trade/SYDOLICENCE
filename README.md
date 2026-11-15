@@ -1,33 +1,36 @@
-# Portail pilote SYDONIA
+# PWA Licence — SYDONIA Control
 
-La documentation maître se trouve dans `../MANUEL_COMPLET_SYSTEME.md` dans le projet source.
+Console de pilotage des licences et installations SYDONIA. Dossier **autonome** : aucun autre dossier n'est nécessaire.
+Indépendante du Portail DGDA et de la Vérification QR.
 
-Ce dossier est la version statique du portail pilote Sydonia. Il est indépendant du portail ELIMU.
-
-## Publication GitHub Pages
-
-1. Envoyer le contenu de ce dossier à la racine de la branche `main`.
-2. Dans **Settings → Pages**, choisir **Deploy from a branch**, branche `main`, dossier `/ (root)`, puis enregistrer.
-3. Ouvrir l'adresse Pages du dépôt. La page d'accueil est `index.html`.
+## Fichiers
+| Fichier | Rôle |
+|---|---|
+| `index.html`, `styles.css`, `app.js` | Interface et logique |
+| `config.js` | URL `/exec` du pilote **Licence** (aucun secret) |
+| `manifest.webmanifest`, `service-worker.js` | Installation PWA, hors-ligne de l'interface, mise à jour automatique |
+| `assets/` | Icônes (192/512, maskable, apple-touch, favicons) et logos 64/128 |
+| `.nojekyll` | Indispensable pour GitHub Pages |
 
 ## Configuration
+`config.js` → `apiUrl` = URL `/exec` du déploiement Apps Script **Licence**. Le champ « Configuration » de l'écran permet de la remplacer
+dans ce navigateur seulement ; ce remplacement n'est retenu que si `configVersion` est identique (changer `configVersion` invalide toutes les URL mémorisées).
 
-L'URL Apps Script Sydonia se renseigne dans `config.js` ou dans **Configuration**. Elle est enregistrée uniquement dans ce navigateur.
+Le champ « Jeton administrateur » est obligatoire pour charger les installations et modifier les licences. Il est conservé uniquement dans
+`sessionStorage` du navigateur. Dans Apps Script, définir la propriété de script `LICENSE_ADMIN_TOKEN` avec la même valeur, puis redéployer le
+pilote Licence. Ne jamais placer ce jeton dans `config.js`, GitHub ou le ZIP public.
 
-Le portail pilote sert à gérer les installations et les licences. Il ne contient pas les données locales des entreprises ni le logiciel Sydonia.
-
-Le registre est relu à l'ouverture, avec le bouton **Actualiser** et automatiquement toutes les 30 secondes lorsque la page est visible et en ligne. Une notification visuelle est affichée lorsqu'une installation passe ou reste dans l'état `EN_ATTENTE` ou `DESACTIVE`; elle est dédupliquée tant que la situation ne change pas.
-
-## Installation sur téléphone
-
-Le portail est une PWA mobile-first. Les appels Apps Script restent en ligne : le mode hors connexion conserve seulement l'interface du portail, sans inventer de données de licences.
-
-## Tester avant publication
-
-Depuis la racine du projet :
-
-```powershell
-py -m http.server 5503 --directory "GITHUB_PORTAL_PILOTE"
+## Essai local
 ```
+cd PWA/LICENCE
+python -m http.server 8080      # puis http://localhost:8080
+```
+(`localhost` est un contexte sécurisé : le service worker et l'installation PWA fonctionnent.)
 
-Ouvrir `http://127.0.0.1:5503/`. Vérifier l’URL Apps Script Sydonia dans **Configuration**, puis vérifier les listes, la recherche, la modification du statut et la révocation. Le logo peut être remplacé dans `assets/`.
+## Mise à jour
+Interface servie **réseau d'abord** : une nouvelle publication est vue au rechargement suivant, et l'application se recharge seule une fois quand
+le nouveau service worker prend la main. Pour forcer le renouvellement du cache : changer `VERSION` dans `service-worker.js` et `?v=` dans `index.html`.
+
+## Diagnostic
+Ouvrir les outils de développement → Console : chaque échec d'appel Apps Script y est écrit avec sa cause réelle (préfixe `[SYDONIA]`).
+Si l'écran affiche « Réponse invalide », l'URL `/exec` est fausse ou le déploiement n'est pas « Tout le monde ».

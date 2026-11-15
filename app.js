@@ -40,23 +40,39 @@
   const openDialog = (d) => { if (!d.open) d.showModal(); };
 
   /* ---------- API Apps Script ---------- */
+  // Lecture : GET ; écriture : POST text/plain (requête « simple », sans pré-vérification CORS).
+  // Jamais de requête opaque (mode CORS standard) : la réponse JSON doit rester lisible. Apps Script redirige vers
+  // script.googleusercontent.com : fetch suit la redirection (redirect: "follow").
   async function api(action, data) {
     if (!cfg.apiUrl) throw new Error("URL du pilote non configurée.");
     const params = Object.assign({ action }, data || {});
-    const post = data && ["updateLicense", "updateContact"].includes(action);
+    const post = data && ["listInstallations", "getInstallation", "updateLicense", "updateContact"].includes(action);
     const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+    let res, raw;
     try {
-      const res = await fetch(cfg.apiUrl + (post ? "" : "?" + new URLSearchParams(params)),
-        post ? { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(params), signal: ctl.signal } : { signal: ctl.signal });
-      const raw = await res.text(); let json;
-      try { json = JSON.parse(raw); } catch (_) { throw new Error("Réponse invalide du pilote. Vérifiez l'URL /exec et le déploiement Apps Script."); }
-      if (!res.ok) throw new Error(`Erreur réseau (${res.status})`);
-      return json;
+      const url = post ? cfg.apiUrl : cfg.apiUrl + "?" + new URLSearchParams(Object.assign({ _t: Date.now() }, params));
+      const init = post
+        ? { method: "POST", redirect: "follow", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(params), signal: ctl.signal }
+        : { method: "GET", redirect: "follow", signal: ctl.signal };
+      res = await fetch(url, init);
+      raw = await res.text();
     } catch (e) {
-      throw e.name === "AbortError" ? new Error("Le serveur n'a pas répondu. Vérifiez la connexion et réessayez.") : e;
+      console.error("[SYDONIA] appel Apps Script impossible :", action, e);
+      if (e && e.name === "AbortError") throw new Error("Le serveur n'a pas répondu. Vérifiez la connexion et réessayez.");
+      throw new Error(navigator.onLine
+        ? "Impossible de joindre le pilote (réseau, CORS ou déploiement Apps Script non public). Détail : " + ((e && e.message) || e)
+        : "Hors connexion.");
     } finally { clearTimeout(to); }
+    let json;
+    try { json = JSON.parse(raw); } catch (e) {
+      console.error("[SYDONIA] réponse non JSON (HTTP " + res.status + ") :", String(raw).slice(0, 300));
+      throw new Error("Réponse invalide du pilote (HTTP " + res.status + "). Vérifiez l'URL /exec et que le déploiement Apps Script est à jour et public.");
+    }
+    if (!res.ok) { console.error("[SYDONIA] HTTP", res.status, json); throw new Error("Erreur réseau (" + res.status + ")"); }
+    return json;
   }
   const chk = (r) => { if (!r || !r.ok) throw new Error((r && (r.message || r.error)) || "Erreur du pilote."); return r; };
+  const adminToken = () => { try { return sessionStorage.getItem("sydonia-admin-token") || ""; } catch (_) { return ""; } };
 
   /* ---------- Rendu ---------- */
   function render() {
@@ -97,7 +113,9 @@
     S.loading = true; $("refresh").setAttribute("aria-busy", "true");
     if (!silent) setState("Synchronisation…");
     try {
-      const [r, c] = await Promise.all([api("listInstallations"), api("contact")]);
+      const token = adminToken();
+      if (!token) throw new Error("Saisissez le jeton administrateur dans Configuration.");
+      const [r, c] = await Promise.all([api("listInstallations", { admin_token: token }), api("contact").catch((e) => { console.warn("[SYDONIA] contact indisponible :", e.message); return null; })]);
       chk(r);
       S.rows = r.installations || [];
       if (!$("configDialog").open) $("supportPhone").value = (c && c.support_phone) || "";
@@ -137,7 +155,7 @@
     const code = $("editCode").value.trim(); if (S.saving || !isCode(code)) return;
     S.saving = true; lock(true); btn.disabled = true; setBtn("saving"); setFb("busy", "Application des changements en cours…");
     try {
-      chk(await api("updateLicense", { pc_id: $("editPc").value, license_code: code }));
+      chk(await api("updateLicense", { pc_id: $("editPc").value, license_code: code, admin_token: adminToken() }));
       delete S.drafts[$("editPc").value];
       setBtn("success"); setFb("ok", "Changements appliqués. Le registre est à jour."); toast("Accès enregistré.", "ok"); reload(true);
       setTimeout(() => { S.saving = false; lock(false); $("editDialog").close(); }, 1000);
@@ -148,14 +166,17 @@
 
   /* ---------- Fenêtre « Connexion » ---------- */
   $("settings").onclick = () => {
-    $("apiUrl").value = cfg.apiUrl || ""; openDialog($("configDialog"));
+    $("apiUrl").value = cfg.apiUrl || "";
+    try { $("adminToken").value = sessionStorage.getItem("sydonia-admin-token") || ""; } catch (_) {}
+    openDialog($("configDialog"));
     api("contact").then((c) => { $("supportPhone").value = (c && c.support_phone) || ""; }).catch(() => {});
   };
   $("configForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const url = $("apiUrl").value.trim(); if (!url) return;
+    const url = $("apiUrl").value.trim(), token = $("adminToken").value.trim(); if (!url || !token) return;
     cfg.apiUrl = url;
     try { localStorage.setItem("sydonia-pilot-config", JSON.stringify({ apiUrl: url, configVersion: cfg.configVersion })); } catch (_) {}
+    try { sessionStorage.setItem("sydonia-admin-token", token); } catch (_) {}
     try {
       chk(await api("updateContact", { support_phone: $("supportPhone").value.trim() }));
       $("configDialog").close(); toast("Configuration enregistrée.", "ok"); reload(false);
@@ -198,6 +219,16 @@
   window.addEventListener("online", () => reload(true));
   window.addEventListener("offline", () => setState("Hors connexion", "error"));
 
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+  // Service worker : enregistrement + mise à jour automatique (rechargement unique quand une nouvelle version prend la main).
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+    navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" }).then((reg) => {
+      const check = () => reg.update().catch(() => {});
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
+      setInterval(check, 30 * 60 * 1000);
+    }).catch((e) => console.error("[SYDONIA] service worker non enregistré :", e));
+  }
   render(); reload(false);
 })();

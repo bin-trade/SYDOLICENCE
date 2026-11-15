@@ -1,9 +1,8 @@
+// Configuration publique de la PWA Licence SYDONIA.
+// Aucun secret ici : seule l'URL /exec du pilote Licence (déploiement Apps Script « Licence »).
 window.PILOT_CONFIG = {
-  apiUrl: "https://script.google.com/macros/s/AKfycbzi4sS1Tuc5KgOnoGkG-U7ld4v9DWzDH7sm9E5tCZP3yAMQ_65lj0An-0bAz_W9Z12-/exec",
-  configVersion: "2026-11-11-sydonia-4",
+  apiUrl: "https://script.google.com/macros/s/AKfycbzgO9wqTIfoGWo6hyBFkga3xFLDrqjr9_EkkTQD96xch8ugCVSMTYT90SNzDQ10xRI3/exec",
+  configVersion: "2026-11-15-sydonia-5",
   appName: "SYDONIA Control",
   appSubtitle: "Pilotage des licences et installations"
 };
-
-
-

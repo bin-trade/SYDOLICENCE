@@ -1,28 +1,50 @@
-const CACHE = "sydonia-control-shell-v2";
-const SHELL = ["./", "./index.html", "./styles.css?v=20261111-sydonia-5", "./config.js?v=20261111-sydonia-2", "./app.js?v=20261111-sydonia-5", "./manifest.webmanifest", "./assets/LOGO_ENTREPRISE.png", "./assets/icon-192.png", "./assets/icon-512.png"];
+/* Service worker — PWA Licence SYDONIA
+   Stratégie : RÉSEAU D'ABORD pour toute l'interface (une nouvelle version publiée est donc vue au prochain chargement),
+   cache seulement en secours hors connexion. Les appels Apps Script (autre origine) ne sont jamais interceptés.
+   Pour forcer le renouvellement du cache : changer VERSION (et le ?v= dans index.html). */
+const VERSION = "2026-11-15-2";
+const PREFIX = "sydonia-licence-";
+const CACHE = PREFIX + VERSION;
+const SHELL = ["./", "./index.html", "./styles.css", "./config.js", "./app.js", "./manifest.webmanifest", "./assets/logo-64.png", "./assets/logo-128.png", "./assets/icon-192.png", "./assets/icon-512.png", "./assets/icon-maskable-192.png", "./assets/icon-maskable-512.png", "./assets/apple-touch-icon.png", "./assets/favicon.ico", "./assets/favicon-32.png", "./assets/favicon-16.png"];
+const isOurs = (k) => k.startsWith("sydonia-control-shell") || k.startsWith("sydonia-licence-");   // ne supprime que les caches de CETTE application
 
 self.addEventListener("install", (event) => {
-  // allSettled : un fichier manquant n'empêche plus l'installation du service worker.
-  event.waitUntil(caches.open(CACHE).then((c) => Promise.allSettled(SHELL.map((u) => c.add(u)))).then(() => self.skipWaiting()));
+  event.waitUntil(
+    caches.open(CACHE)
+      .then((cache) => Promise.allSettled(SHELL.map((u) => cache.add(new Request(u, { cache: "reload" })))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && isOurs(k)).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
 });
 
-self.addEventListener("fetch", (event) => {
-  const req = event.request, url = new URL(req.url);
-  if (req.method !== "GET" || url.origin !== self.location.origin) return; // Apps Script : toujours en ligne
+self.addEventListener("message", (event) => { if (event.data === "SKIP_WAITING") self.skipWaiting(); });
 
-  // Pages : réseau d'abord, cache en secours hors connexion.
-  if (req.mode === "navigate") {
-    event.respondWith(fetch(req).then((res) => { const copy = res.clone(); caches.open(CACHE).then((c) => c.put("./index.html", copy)); return res; }).catch(() => caches.match("./index.html")));
-    return;
-  }
-  // Fichiers : on sert le cache tout de suite et on le met à jour en arrière-plan.
-  event.respondWith(caches.open(CACHE).then(async (c) => {
-    const cached = await c.match(req, { ignoreSearch: true });
-    const net = fetch(req).then((res) => { if (res.ok) c.put(req, res.clone()); return res; }).catch(() => cached);
-    return cached || net;
-  }));
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET") return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;           // Apps Script, polices externes : jamais interceptés
+  if (url.pathname.endsWith("/service-worker.js")) return;   // toujours frais
+
+  // Une seule entrée de cache par fichier (adresse sans paramètres ?v=...) : le dernier contenu reçu remplace toujours l'ancien.
+  const key = req.mode === "navigate" ? "./index.html" : (() => { const u = new URL(req.url); u.search = ""; u.hash = ""; return u.href; })();
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    try {
+      const fresh = await fetch(req, { cache: "no-cache" });
+      if (fresh && fresh.ok && fresh.type === "basic") cache.put(key, fresh.clone()).catch(() => {});
+      return fresh;
+    } catch (err) {
+      const hit = await cache.match(key);
+      if (hit) return hit;
+      return new Response("Hors connexion et ressource non disponible en cache.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    }
+  })());
 });
