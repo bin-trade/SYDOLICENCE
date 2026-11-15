@@ -46,7 +46,7 @@
   async function api(action, data) {
     if (!cfg.apiUrl) throw new Error("URL du pilote non configurée.");
     const params = Object.assign({ action }, data || {});
-    const post = data && ["listInstallations", "getInstallation", "updateLicense", "updateContact"].includes(action);
+    const post = data && ["listInstallations", "getInstallation", "listUsage", "updateLicense", "updateContact"].includes(action);
     const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), TIMEOUT_MS);
     let res, raw;
     try {
@@ -128,6 +128,29 @@
   }
   const reload = (silent) => load(silent).catch(() => {});
 
+  /* ---------- Audit des rapports générés ---------- */
+  const compactFingerprint = (v) => { const t = String(v || "—"); return t.length > 18 ? `${t.slice(0, 8)}…${t.slice(-8)}` : t; };
+  const fmtDateTime = (v) => {
+    if (!v) return "—";
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+  };
+  async function loadAudit() {
+    const token = adminToken();
+    if (!token) { toast("Saisissez d’abord le jeton administrateur dans Configuration.", "error"); return; }
+    const box = $("auditTotals"), summary = $("auditSummary"), records = $("auditRecords");
+    box.textContent = "Chargement de l’audit…"; summary.innerHTML = ""; records.innerHTML = "";
+    try {
+      const response = chk(await api("listUsage", { admin_token: token, year: $("auditYear").value.trim(), month: $("auditMonth").value }));
+      const groups = response.summary || [], events = response.records || [];
+      box.innerHTML = `<strong>${response.total || 0}</strong> rapport(s) enregistré(s) · <strong>${groups.length}</strong> combinaison(s) PC/utilisateur/agence`;
+      summary.innerHTML = groups.map((x) => `<tr><td><code title="${esc(x.machine_fingerprint)}">${esc(compactFingerprint(x.machine_fingerprint))}</code><small>${esc(x.user_name || "Utilisateur non renseigné")}</small></td><td><b>${esc(x.agency_name || x.agency_id || "—")}</b></td><td>${esc(x.bureau_code || "—")}<small>${esc(x.location || "—")}</small></td><td><b>${esc(x.reports_count)}</b></td><td>${esc(fmtDateTime(x.last_generated_at))}</td></tr>`).join("") || `<tr><td colspan="5" class="empty">Aucune génération pour ce filtre.</td></tr>`;
+      records.innerHTML = events.map((x) => `<tr><td>${esc(fmtDateTime(x.generated_at))}</td><td><code title="${esc(x.machine_fingerprint)}">${esc(compactFingerprint(x.machine_fingerprint))}</code><small>${esc(x.user_name || "—")}</small></td><td><code>${esc(x.report_id || "—")}</code></td><td>${esc(x.agency_name || x.agency_id || "—")}</td><td>${esc(x.bureau_code || "—")} · ${esc(x.location || "—")}</td></tr>`).join("") || `<tr><td colspan="5" class="empty">Aucune opération enregistrée.</td></tr>`;
+    } catch (error) { box.textContent = "Audit indisponible : " + error.message; toast("Impossible de charger l’audit.", "error"); }
+  }
+  $("audit").onclick = () => { openDialog($("auditDialog")); loadAudit(); };
+  $("auditRefresh").onclick = loadAudit;
+
   $("rows").addEventListener("click", (e) => { const b = e.target.closest(".edit"); if (b) openEdit(b.dataset.pc); });
 
   /* ---------- Fenêtre « Gérer l'accès » ---------- */
@@ -178,7 +201,7 @@
     try { localStorage.setItem("sydonia-pilot-config", JSON.stringify({ apiUrl: url, configVersion: cfg.configVersion })); } catch (_) {}
     try { sessionStorage.setItem("sydonia-admin-token", token); } catch (_) {}
     try {
-      chk(await api("updateContact", { support_phone: $("supportPhone").value.trim() }));
+      chk(await api("updateContact", { support_phone: $("supportPhone").value.trim(), admin_token: adminToken() }));
       $("configDialog").close(); toast("Configuration enregistrée.", "ok"); reload(false);
     } catch (err) { toast("Échec de l'enregistrement : " + err.message, "error"); }
   });
